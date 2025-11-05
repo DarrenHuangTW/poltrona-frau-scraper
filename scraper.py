@@ -941,15 +941,29 @@ class PoltronaFrauScraper:
 
 
 def setup_driver():
-    """Setup Chrome driver with appropriate options."""
+    """Setup Chrome driver with appropriate options for local and cloud deployment."""
     chrome_options = Options()
     chrome_options.add_argument('--headless')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--disable-web-security')
+    chrome_options.add_argument('--allow-running-insecure-content')
+    chrome_options.add_argument('--disable-extensions')
+    chrome_options.add_argument('--disable-plugins')
+    chrome_options.add_argument('--disable-images')
     
-    service = Service(ChromeDriverManager().install())
+    # Check if running on Streamlit Cloud or similar environment
+    import os
+    if os.getenv('STREAMLIT_SHARING') or os.path.exists('/usr/bin/chromium'):
+        # Use system chromium on Streamlit Cloud
+        chrome_options.binary_location = '/usr/bin/chromium'
+        service = Service('/usr/bin/chromedriver')
+    else:
+        # Use ChromeDriverManager for local development
+        service = Service(ChromeDriverManager().install())
+    
     driver = webdriver.Chrome(service=service, options=chrome_options)
     return driver
 
