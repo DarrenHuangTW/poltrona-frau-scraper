@@ -959,6 +959,7 @@ def setup_driver():
     if os.getenv('STREAMLIT_SHARING') or os.path.exists('/usr/bin/chromium'):
         # Use system chromium on Streamlit Cloud
         chrome_options.binary_location = '/usr/bin/chromium'
+        # chromium-driver package installs to /usr/bin/chromedriver
         service = Service('/usr/bin/chromedriver')
     else:
         # Use ChromeDriverManager for local development
