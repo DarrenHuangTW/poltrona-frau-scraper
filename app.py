@@ -24,9 +24,12 @@ def get_sitemap_urls():
             loc_elem = url_elem.find('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')
             if loc_elem is not None:
                 url = loc_elem.text
-                # Only include product URLs
+                # Only include actual product URLs (not category pages)
                 if '/ww/en/products/' in url:
-                    urls.append(url)
+                    # Exclude category pages that end with .NUMBERS.html pattern
+                    import re
+                    if not re.search(r'\.\d+\.html$', url):
+                        urls.append(url)
         
         return urls
     except Exception as e:
@@ -110,6 +113,11 @@ def main():
         "Choose scraping mode:",
         ["Single URL", "Multiple URLs", "All Products (Sitemap)"]
     )
+    
+    # Credits
+    st.sidebar.markdown("---")
+    st.sidebar.caption("Built by Darren Huang from Overdose")
+    st.sidebar.caption("Questions or feature requests? Feel free to reach out!")
     
     if scrape_mode == "Single URL":
         st.header("Single URL Scraping")
@@ -251,8 +259,7 @@ def main():
                     st.rerun()
     
     elif scrape_mode == "All Products (Sitemap)":
-        st.header("Scrape All Products from Sitemap")
-        st.warning("⚠️ This will scrape ALL products from the website. This may take a very long time!")
+        st.header("Scrape Products from Sitemap")
         
         if st.button("Load Sitemap URLs"):
             with st.spinner("Fetching sitemap..."):
@@ -261,25 +268,141 @@ def main():
             if sitemap_urls:
                 st.success(f"Found {len(sitemap_urls)} product URLs in sitemap")
                 st.session_state.sitemap_urls = sitemap_urls
-                
-                # Show first few URLs as preview
-                with st.expander("Preview URLs (first 10)"):
-                    for url in sitemap_urls[:10]:
-                        st.text(url)
-                    if len(sitemap_urls) > 10:
-                        st.text(f"... and {len(sitemap_urls) - 10} more")
+                # Initialize selection state
+                if 'selected_urls' not in st.session_state:
+                    st.session_state.selected_urls = []
         
         if 'sitemap_urls' in st.session_state:
-            st.info(f"Ready to scrape {len(st.session_state.sitemap_urls)} products")
+            sitemap_urls = st.session_state.sitemap_urls
             
-            if st.button("🚀 Scrape All Products", type="primary"):
-                data_list = scrape_multiple_urls(st.session_state.sitemap_urls)
+            # URL download section
+            st.subheader("📥 Download URLs")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Create text file with all URLs
+                urls_text = '\n'.join(sitemap_urls)
+                st.download_button(
+                    label="📄 Download All URLs (.txt)",
+                    data=urls_text,
+                    file_name=f"poltrona_frau_urls_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    mime="text/plain"
+                )
+            
+            with col2:
+                # Create CSV with URLs
+                urls_df = pd.DataFrame({'urls': sitemap_urls})
+                csv_buffer = io.StringIO()
+                urls_df.to_csv(csv_buffer, index=False)
+                st.download_button(
+                    label="📊 Download All URLs (.csv)",
+                    data=csv_buffer.getvalue(),
+                    file_name=f"poltrona_frau_urls_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+            
+            # URL selection section
+            st.subheader("🎯 Select URLs to Scrape")
+            
+            # Bulk selection controls
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                if st.button("✅ Select All"):
+                    st.session_state.selected_urls = sitemap_urls.copy()
+                    st.rerun()
+            with col2:
+                if st.button("❌ Deselect All"):
+                    st.session_state.selected_urls = []
+                    st.rerun()
+            with col3:
+                if st.button("🔄 Invert Selection"):
+                    st.session_state.selected_urls = [url for url in sitemap_urls if url not in st.session_state.selected_urls]
+                    st.rerun()
+            with col4:
+                st.write(f"Selected: {len(st.session_state.selected_urls)}/{len(sitemap_urls)}")
+            
+            # Search/filter functionality
+            search_term = st.text_input("🔍 Filter URLs (search in URL text):", placeholder="e.g., sofa, chair, table")
+            
+            # Filter URLs based on search
+            if search_term:
+                filtered_urls = [url for url in sitemap_urls if search_term.lower() in url.lower()]
+                st.info(f"Showing {len(filtered_urls)} URLs containing '{search_term}'")
+            else:
+                filtered_urls = sitemap_urls
+            
+            # Paginated URL selection with checkboxes
+            if filtered_urls:
+                # Pagination setup
+                items_per_page = 50
+                total_pages = (len(filtered_urls) - 1) // items_per_page + 1
                 
-                if data_list:
-                    # Store data in session state
-                    st.session_state.scraped_data = data_list
-                    st.session_state.scrape_mode = "sitemap"
-                    st.success(f"✅ Successfully scraped {len(data_list)} products!")
+                # Initialize current page in session state
+                if 'current_page' not in st.session_state:
+                    st.session_state.current_page = 0
+                
+                # Ensure current page is within bounds
+                if st.session_state.current_page >= total_pages:
+                    st.session_state.current_page = total_pages - 1
+                elif st.session_state.current_page < 0:
+                    st.session_state.current_page = 0
+                
+                page = st.session_state.current_page
+                start_idx = page * items_per_page
+                end_idx = min(start_idx + items_per_page, len(filtered_urls))
+                page_urls = filtered_urls[start_idx:end_idx]
+                
+                st.write(f"Showing URLs {start_idx + 1}-{end_idx} of {len(filtered_urls)} (Page {page + 1} of {total_pages})")
+                
+                # Checkboxes for URL selection
+                for i, url in enumerate(page_urls):
+                    is_selected = url in st.session_state.selected_urls
+                    
+                    # Create checkbox with URL as label
+                    selected = st.checkbox(
+                        url,
+                        value=is_selected,
+                        key=f"url_checkbox_{start_idx + i}_{hash(url)}"
+                    )
+                    
+                    # Update selection state
+                    if selected and url not in st.session_state.selected_urls:
+                        st.session_state.selected_urls.append(url)
+                    elif not selected and url in st.session_state.selected_urls:
+                        st.session_state.selected_urls.remove(url)
+                
+                # Pagination buttons at the bottom
+                if total_pages > 1:
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    
+                    with col1:
+                        if st.button("⬅️ Previous", disabled=(page == 0)):
+                            st.session_state.current_page -= 1
+                            st.rerun()
+                    
+                    with col2:
+                        st.write(f"Page {page + 1} of {total_pages}")
+                    
+                    with col3:
+                        if st.button("Next ➡️", disabled=(page == total_pages - 1)):
+                            st.session_state.current_page += 1
+                            st.rerun()
+            
+            # Scraping section
+            if st.session_state.selected_urls:
+                st.subheader("🚀 Start Scraping")
+                st.info(f"Ready to scrape {len(st.session_state.selected_urls)} selected products")
+                
+                if st.button("🚀 Scrape Selected Products", type="primary"):
+                    data_list = scrape_multiple_urls(st.session_state.selected_urls)
+                    
+                    if data_list:
+                        # Store data in session state
+                        st.session_state.scraped_data = data_list
+                        st.session_state.scrape_mode = "sitemap"
+                        st.success(f"✅ Successfully scraped {len(data_list)} products!")
+            else:
+                st.warning("Please select at least one URL to scrape")
         
         # Display scraped data if it exists in session state
         if 'scraped_data' in st.session_state and st.session_state.scrape_mode == "sitemap":

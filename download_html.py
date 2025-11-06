@@ -60,11 +60,23 @@ def download_rendered_html(driver, url, output_dir):
         return False
 
 def main():
+    """
+    Development utility for downloading rendered HTML pages from Poltrona Frau.
+    
+    Purpose: Downloads fully rendered HTML (after JavaScript execution) for:
+    - Testing and debugging scraper logic
+    - Analyzing page structure changes
+    - Developing new extraction methods
+    
+    Note: For actual product scraping, use app.py (Streamlit interface) 
+    or scraper.py directly.
+    """
     urls_file = 'reference/tests/test_urls.txt'
     output_dir = 'reference/tests'
     
     if not os.path.exists(urls_file):
         print(f"Error: {urls_file} not found")
+        print("Create reference/tests/test_urls.txt with URLs to download")
         return
     
     os.makedirs(output_dir, exist_ok=True)
