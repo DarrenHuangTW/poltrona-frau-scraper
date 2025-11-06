@@ -170,45 +170,38 @@ class PoltronaFrauScraper:
     
     def extract_product_description(self) -> Optional[str]:
         """
-        Extract the product description from div.productcontents.
+        Extract the product description from div.productcontents using static extraction.
         
         Returns:
             Product description or None if not found
         """
         try:
-            # Wait for productcontents to be present
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div.productcontents')))
-            
-            # Use JavaScript to get the text content as it handles dynamic loading better
-            script = '''
-            var element = document.querySelector('.cmp-productcontents .cmp-text p');
-            return element ? element.innerText.trim() : null;
-            '''
-            
-            description = self.driver.execute_script(script)
+            # Use JavaScript to get innerHTML content (Selenium .text doesn't work for this element)
+            description = self.driver.execute_script(
+                'return document.querySelector(".cmp-productcontents .cmp-text p")?.innerHTML?.trim() || null;'
+            )
             if description and len(description) > 20:
-                return description
-                
-        except (NoSuchElementException, TimeoutException):
+                # Clean HTML tags if any
+                import re
+                clean_text = re.sub(r'<[^>]+>', '', description).strip()
+                return clean_text
+        except Exception:
             pass
         
         try:
-            # Fallback: try with different selector
-            script = '''
-            var elements = document.querySelectorAll('.cmp-productcontents p');
-            for (var i = 0; i < elements.length; i++) {
-                var text = elements[i].innerText.trim();
-                if (text.length > 20) {
-                    return text;
-                }
-            }
-            return null;
-            '''
-            
-            description = self.driver.execute_script(script)
+            # Fallback: try alternative selector with JavaScript
+            description = self.driver.execute_script(
+                'var elements = document.querySelectorAll(".cmp-productcontents p"); ' +
+                'for (var i = 0; i < elements.length; i++) { ' +
+                '  var text = elements[i].innerHTML?.trim(); ' +
+                '  if (text && text.length > 20) return text; ' +
+                '} return null;'
+            )
             if description:
-                return description
-                
+                # Clean HTML tags if any
+                import re
+                clean_text = re.sub(r'<[^>]+>', '', description).strip()
+                return clean_text
         except Exception:
             pass
         
@@ -216,49 +209,44 @@ class PoltronaFrauScraper:
     
     def extract_designer_bio(self) -> Optional[str]:
         """
-        Extract designer biography from the page.
+        Extract designer biography from the page using static extraction.
         
         Returns:
             Designer bio text or None if not found
         """
         try:
-            # Use JavaScript to find designer bio in paneltext section
-            bio_script = '''
-            // Look for designer bio in div.text.paneltext
-            var bioElement = document.querySelector('div.text.paneltext p');
-            if (bioElement) {
-                return bioElement.innerText.trim();
-            }
-            
-            // Fallback: try other paneltext selectors
-            var fallbackSelectors = [
+            # Use JavaScript to get innerHTML content (Selenium .text doesn't work for this element)
+            bio_text = self.driver.execute_script(
+                'return document.querySelector("div.text.paneltext p")?.innerHTML?.trim() || null;'
+            )
+            if bio_text and len(bio_text) > 100:  # Bio should be substantial
+                # Clean HTML tags if any
+                import re
+                clean_text = re.sub(r'<[^>]+>', '', bio_text).strip()
+                return clean_text
+        except Exception:
+            pass
+        
+        try:
+            # Fallback: try alternative selectors with JavaScript
+            fallback_selectors = [
                 '.paneltext p',
                 '.text.paneltext',
                 '[class*="paneltext"] p'
-            ];
+            ]
             
-            for (var s = 0; s < fallbackSelectors.length; s++) {
-                var element = document.querySelector(fallbackSelectors[s]);
-                if (element) {
-                    var text = element.innerText.trim();
-                    if (text.length > 100) {  // Bio should be substantial
-                        return text;
-                    }
-                }
-            }
-            
-            return null;
-            '''
-            
-            bio = self.driver.execute_script(bio_script)
-            if bio:
-                # Clean HTML entities
-                import html
-                decoded = html.unescape(bio)
-                import re
-                clean_text = re.sub(r'<[^>]+>', '', decoded)
-                return clean_text.strip()
-                
+            for selector in fallback_selectors:
+                try:
+                    bio_text = self.driver.execute_script(
+                        f'return document.querySelector("{selector}")?.innerHTML?.trim() || null;'
+                    )
+                    if bio_text and len(bio_text) > 100:
+                        # Clean HTML tags if any
+                        import re
+                        clean_text = re.sub(r'<[^>]+>', '', bio_text).strip()
+                        return clean_text
+                except Exception:
+                    continue
         except Exception:
             pass
         
@@ -266,56 +254,48 @@ class PoltronaFrauScraper:
     
     def extract_designer_image(self) -> Optional[str]:
         """
-        Extract designer image URL from the page.
+        Extract designer image URL from the page using static extraction.
         
         Returns:
             Designer image URL or None if not found
         """
         try:
-            # Use JavaScript to find designer image
-            designer_img_script = '''
-            var designerImg = null;
-            
-            // Look for designer images in common patterns
-            var selectors = [
-                'img[src*="designer"]',
-                'img[data-src*="designer"]',
+            # Direct static extraction - try specific designer image selectors
+            designer_selectors = [
                 'img[src*="tab-designer"]',
-                'img[data-src*="tab-designer"]'
-            ];
+                'img[data-src*="tab-designer"]',
+                'img[src*="designer"]',
+                'img[data-src*="designer"]'
+            ]
             
-            for (var s = 0; s < selectors.length; s++) {
-                var img = document.querySelector(selectors[s]);
-                if (img) {
-                    designerImg = img.src || img.getAttribute('data-src');
-                    break;
-                }
-            }
-            
-            // Also check for images that match designer names
-            if (!designerImg) {
-                var allImages = document.querySelectorAll('img[src], img[data-src]');
-                for (var i = 0; i < allImages.length; i++) {
-                    var src = allImages[i].src || allImages[i].getAttribute('data-src');
-                    if (src && (src.includes('massaud') || src.includes('lazzeroni') || src.includes('designer'))) {
-                        designerImg = src;
-                        break;
-                    }
-                }
-            }
-            
-            return designerImg;
-            '''
-            
-            img_url = self.driver.execute_script(designer_img_script)
-            if img_url:
-                # Convert relative URLs to absolute
-                if img_url.startswith('//'):
-                    img_url = f"https:{img_url}"
-                elif img_url.startswith('/'):
-                    img_url = urljoin(self.base_url, img_url)
-                return img_url
-                
+            for selector in designer_selectors:
+                try:
+                    img_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    img_url = img_element.get_attribute('src') or img_element.get_attribute('data-src')
+                    if img_url:
+                        # Convert relative URLs to absolute
+                        if img_url.startswith('//'):
+                            img_url = f"https:{img_url}"
+                        elif img_url.startswith('/'):
+                            img_url = urljoin(self.base_url, img_url)
+                        return img_url
+                except NoSuchElementException:
+                    continue
+        except Exception:
+            pass
+        
+        try:
+            # Fallback: search for designer name in image URLs
+            all_images = self.driver.find_elements(By.CSS_SELECTOR, 'img[src], img[data-src]')
+            for img in all_images:
+                src = img.get_attribute('src') or img.get_attribute('data-src')
+                if src and ('massaud' in src.lower() or 'lazzeroni' in src.lower() or 'designer' in src.lower()):
+                    # Convert relative URLs to absolute
+                    if src.startswith('//'):
+                        src = f"https:{src}"
+                    elif src.startswith('/'):
+                        src = urljoin(self.base_url, src)
+                    return src
         except Exception:
             pass
         
