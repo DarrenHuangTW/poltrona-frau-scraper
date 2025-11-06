@@ -159,10 +159,16 @@ print(data['product_name'])  # "GranTorino HB | Sofa"
   },
   "downloads": [
     {
-      "filename": "grantorino-hb-sofa_2d-dwg.zip",
       "group": "2D DWG",
-      "text": "Download 2D DWG",
-      "url": "/content/dam/ld/poltronafrau/..."
+      "url": "https://www.poltronafrau.com/content/dam/ld/poltronafrau/products/grantorino-hb-sofa/20_area_professionals/planning-tools/grantorino-hb-sofa_2d-dwg.zip"
+    },
+    {
+      "group": "3DS",
+      "url": "https://www.poltronafrau.com/content/dam/ld/poltronafrau/products/grantorino-hb-sofa/20_area_professionals/planning-tools/grantorino-hb-sofa_3ds.zip"
+    },
+    {
+      "group": "OBJ",
+      "url": "https://www.poltronafrau.com/content/dam/ld/poltronafrau/products/grantorino-hb-sofa/20_area_professionals/planning-tools/grantorino-hb-sofa_obj.zip"
     }
   ],
   "coverings_and_finishes": {
@@ -212,7 +218,7 @@ print(data['product_name'])  # "GranTorino HB | Sofa"
 ## 🚀 Deployment
 
 ### Streamlit Cloud (Live)
-- **URL**: [Deployed App Link]
+- **URL**: https://poltrona-frau-scraper.streamlit.app/
 - **Automatic Deployment**: Connected to GitHub repository
 - **Environment**: Production-ready with cloud Chrome/Chromium
 
