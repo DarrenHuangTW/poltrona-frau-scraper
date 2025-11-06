@@ -323,7 +323,7 @@ class PoltronaFrauScraper:
     
     def extract_downloads(self) -> List[Dict[str, str]]:
         """
-        Extract downloads/files from the Downloads section.
+        Extract downloads/files from the Downloads section using static Selenium extraction.
         
         Returns:
             List of download items with group, filename, and URL
@@ -331,206 +331,87 @@ class PoltronaFrauScraper:
         downloads = []
         
         try:
-            # Find and click the Downloads tab specifically
-            downloads_script = '''
-            var downloadsTab = null;
+            # Direct extraction from static HTML - no tab interaction needed
+            # Find all download links with data-href attributes (works even for hidden elements)
+            download_links = self.driver.find_elements(By.CSS_SELECTOR, 'a[data-href]')
             
-            // Look for Downloads tab in product area first
-            var productSection = document.querySelector('.cmp-productcontents, .product-details, .cmp-producthero');
-            if (productSection) {
-                var tabs = productSection.querySelectorAll('.cmp-tabs__tab, [role="tab"]');
-                for (var i = 0; i < tabs.length; i++) {
-                    var text = tabs[i].innerText.trim().toLowerCase();
-                    if (text === 'downloads' || text.includes('download')) {
-                        downloadsTab = tabs[i];
-                        break;
-                    }
-                }
-            }
-            
-            // Fallback: search entire page for Downloads tab
-            if (!downloadsTab) {
-                var allTabs = document.querySelectorAll('.cmp-tabs__tab, [role="tab"]');
-                for (var i = 0; i < allTabs.length; i++) {
-                    var text = allTabs[i].innerText.trim().toLowerCase();
-                    if (text === 'downloads' || (text.includes('download') && text.length < 20)) {
-                        downloadsTab = allTabs[i];
-                        break;
-                    }
-                }
-            }
-            
-            if (downloadsTab) {
-                console.log('Found Downloads tab:', downloadsTab.innerText.trim());
-                try {
-                    downloadsTab.click();
-                    return {success: true, tabText: downloadsTab.innerText.trim()};
-                } catch(e) {
-                    console.log('Click failed, trying alternative method');
-                    var event = new MouseEvent('click', {bubbles: true});
-                    downloadsTab.dispatchEvent(event);
-                    return {success: true, tabText: downloadsTab.innerText.trim()};
-                }
-            }
-            return {success: false, message: 'Downloads tab not found'};
-            '''
-            
-            click_result = self.driver.execute_script(downloads_script)
-            if click_result and click_result.get('success'):
-                # Wait longer for content to load
-                import time
-                time.sleep(5)
-            
-            # Extract download items from the professionals section
-            downloads_extract_script = '''
-            var downloads = [];
-            
-            console.log('Starting downloads extraction...');
-            
-            // Find the professionals section with download tracking
-            var professionalsSection = document.querySelector('#professionals[data-download-track-api-url]');
-            
-            if (professionalsSection) {
-                console.log('Found professionals section with downloads');
+            for link in download_links:
+                data_href = link.get_attribute('data-href')
                 
-                // Look for download items with the specific structure:
-                // span.cmp-accordion__title + a[data-href]
-                var downloadLinks = professionalsSection.querySelectorAll('a[data-href]');
-                console.log('Found', downloadLinks.length, 'download links with data-href');
-                
-                for (var i = 0; i < downloadLinks.length; i++) {
-                    var link = downloadLinks[i];
-                    var dataHref = link.getAttribute('data-href');
+                if data_href:
+                    download_title = None
                     
-                    // Find the title span for this download
-                    var titleElement = link.closest('div').querySelector('span.cmp-accordion__title');
-                    var downloadTitle = titleElement ? titleElement.innerText.trim() : '';
+                    # Method 1: Look for accordion title in subitem structure (for 2D/3D planning tools)
+                    try:
+                        parent_subitem = link.find_element(By.XPATH, './ancestor::div[contains(@class, "cmp-accordion__subitem")]')
+                        title_element = parent_subitem.find_element(By.CSS_SELECTOR, 'span.cmp-accordion__title')
+                        download_title = title_element.text.strip()
+                    except NoSuchElementException:
+                        pass
                     
-                    if (downloadTitle && dataHref) {
-                        // Clean up the title and create proper group name
-                        var groupName = downloadTitle;
+                    # Method 2: Look for title in parent flex div
+                    if not download_title:
+                        try:
+                            flex_parent = link.find_element(By.XPATH, './ancestor::div[contains(@class, "flex")]')
+                            title_element = flex_parent.find_element(By.CSS_SELECTOR, 'span.cmp-accordion__title')
+                            download_title = title_element.text.strip()
+                        except NoSuchElementException:
+                            pass
+                    
+                    # Method 3: Look for title in button parent (for header-level downloads like Product sheet, Dimensions, Gallery)
+                    if not download_title:
+                        try:
+                            button_parent = link.find_element(By.XPATH, './ancestor::button[contains(@class, "cmp-accordion__button")]')
+                            title_element = button_parent.find_element(By.CSS_SELECTOR, 'span.cmp-accordion__title')
+                            download_title = title_element.text.strip()
+                        except NoSuchElementException:
+                            pass
+                    
+                    # Method 4: Extract from filename as last resort
+                    if not download_title:
+                        url_parts = data_href.split('/')
+                        filename_part = url_parts[-1] if url_parts else ''
+                        if '_' in filename_part:
+                            download_title = filename_part.split('_')[-1].split('.')[0].upper()
+                        else:
+                            download_title = 'Unknown Download'
+                    
+                    if download_title and data_href:
+                        # Convert to uppercase for standardization
+                        group_name = download_title.upper()
                         
-                        // Normalize common formats
-                        if (downloadTitle.toLowerCase() === '3d dwg') {
-                            groupName = '3D DWG';
-                        } else if (downloadTitle.toLowerCase() === '2d dwg') {
-                            groupName = '2D DWG';
-                        } else if (downloadTitle.toLowerCase() === 'max') {
-                            groupName = 'MAX';
-                        } else if (downloadTitle.toLowerCase() === '3ds') {
-                            groupName = '3DS';
-                        } else if (downloadTitle.toLowerCase() === 'fbx') {
-                            groupName = 'FBX';
-                        } else if (downloadTitle.toLowerCase() === 'obj') {
-                            groupName = 'OBJ';
-                        } else if (downloadTitle.toLowerCase() === 'product sheet') {
-                            groupName = 'Product sheet';
-                        } else if (downloadTitle.toLowerCase() === 'dimensions') {
-                            groupName = 'DIMENSIONS';
-                        } else if (downloadTitle.toLowerCase() === 'gallery') {
-                            groupName = 'GALLERY';
-                        } else {
-                            // Capitalize first letter of each word
-                            groupName = downloadTitle.split(' ').map(function(word) {
-                                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-                            }).join(' ');
-                        }
+                        # Convert relative URL to absolute URL
+                        if data_href.startswith('/'):
+                            absolute_url = urljoin(self.base_url, data_href)
+                        else:
+                            absolute_url = data_href
                         
-                        // Generate filename from the URL or group name
-                        var filename = '';
-                        if (dataHref) {
-                            var urlParts = dataHref.split('/');
-                            var lastPart = urlParts[urlParts.length - 1];
-                            if (lastPart && lastPart.includes('.')) {
-                                filename = lastPart; // Use the actual filename from URL
-                            }
-                        }
-                        
-                        // Fallback filename generation if not found in URL
-                        if (!filename) {
-                            filename = groupName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-                            if (groupName.toLowerCase().includes('sheet')) {
-                                filename += '.pdf';
-                            } else if (groupName.toLowerCase().includes('dwg')) {
-                                filename += '.dwg';
-                            } else if (groupName.toLowerCase().includes('max')) {
-                                filename += '.max';
-                            } else if (groupName.toLowerCase().includes('3ds')) {
-                                filename += '.3ds';
-                            } else if (groupName.toLowerCase().includes('fbx')) {
-                                filename += '.fbx';
-                            } else if (groupName.toLowerCase().includes('obj')) {
-                                filename += '.obj';
-                            } else {
-                                filename += '.zip'; // Default extension
-                            }
-                        }
-                        
-                        downloads.push({
-                            group: groupName,
-                            filename: filename,
-                            url: dataHref,
-                            text: 'Download ' + groupName
-                        });
-                        
-                        console.log('Added download:', groupName, 'URL:', dataHref);
-                    }
-                }
-            } else {
-                console.log('No professionals section found');
+                        downloads.append({
+                            'group': group_name,
+                            'url': absolute_url
+                        })
+            
+            # Remove duplicates
+            unique_downloads = []
+            seen = set()
+            
+            for download in downloads:
+                key = f"{download['group']}|{download['url']}"
                 
-                // Fallback: look in active Downloads tab panel
-                var activePanel = document.querySelector('.cmp-tabs__tabpanel--active, [role="tabpanel"][aria-hidden="false"]');
-                if (activePanel) {
-                    console.log('Trying fallback: active panel');
-                    var fallbackLinks = activePanel.querySelectorAll('a[data-href]');
-                    for (var j = 0; j < fallbackLinks.length; j++) {
-                        var fbLink = fallbackLinks[j];
-                        var fbDataHref = fbLink.getAttribute('data-href');
-                        var fbText = fbLink.innerText.trim() || 'Download';
-                        
-                        if (fbDataHref) {
-                            downloads.push({
-                                group: fbText,
-                                filename: fbText.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase(),
-                                url: fbDataHref,
-                                text: fbText
-                            });
-                        }
-                    }
-                }
-            }
-            
-            // Remove duplicates and empty entries
-            var uniqueDownloads = [];
-            var seen = new Set();
-            
-            for (var k = 0; k < downloads.length; k++) {
-                var download = downloads[k];
-                var key = download.group + '|' + download.filename + '|' + download.url;
+                # Skip empty or invalid entries
+                if not download['group'] or download['group'].strip() == '' or 'UNDEFINED' in download['group']:
+                    continue
                 
-                // Skip empty or invalid entries
-                if (!download.group || download.group.trim() === '' || 
-                    download.group.toLowerCase().includes('undefined')) {
-                    continue;
-                }
-                
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    uniqueDownloads.push(download);
-                }
-            }
+                if key not in seen:
+                    seen.add(key)
+                    unique_downloads.append(download)
             
-            return uniqueDownloads;
-            '''
-            
-            download_items = self.driver.execute_script(downloads_extract_script)
-            downloads.extend(download_items)
-            
-        except Exception as e:
-            pass
+            return unique_downloads
         
-        return downloads
+        except Exception as e:
+            print(f"Error in downloads extraction: {e}")
+            return []
+    
     
     def extract_coverings_and_finishes(self) -> Dict[str, Any]:
         """
