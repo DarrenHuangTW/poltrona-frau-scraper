@@ -542,60 +542,24 @@ class PoltronaFrauScraper:
         finishes_data = {}
         
         try:
-            # First find and click the Coverings and Finishes tab
-            finishes_tab_script = '''
-            var finishesTab = null;
-            
-            // Look for Coverings and finishes tab
-            var tabs = document.querySelectorAll('.cmp-tabs__tab, [role="tab"]');
-            for (var i = 0; i < tabs.length; i++) {
-                var text = tabs[i].innerText.trim().toLowerCase();
-                if (text.includes('coverings') && text.includes('finishes')) {
-                    finishesTab = tabs[i];
-                    break;
-                }
-            }
-            
-            if (finishesTab) {
-                finishesTab.click();
-                return {success: true, tabText: finishesTab.innerText.trim()};
-            }
-            return {success: false, message: 'Coverings and finishes tab not found'};
-            '''
-            
-            click_result = self.driver.execute_script(finishes_tab_script)
-            if not click_result or not click_result.get('success'):
-                return finishes_data
-            
-            # Wait for the tab content to activate
-            import time
-            time.sleep(5)
-            
-            # Find the data-include URL for the finishes content
-            data_include_script = '''
-            var includeUrl = null;
-            
-            // Look for elements with data-include attribute in the active panel
-            var activePanel = document.querySelector('.cmp-tabs__tabpanel--active');
-            if (activePanel) {
-                var includeElement = activePanel.querySelector('[data-include]');
-                if (includeElement) {
-                    includeUrl = includeElement.getAttribute('data-include');
-                }
-            }
-            
-            // Also check for finishes-specific elements
-            if (!includeUrl) {
-                var finishesElement = document.querySelector('#finishes-tab-positioning-bottom[data-include]');
-                if (finishesElement) {
-                    includeUrl = finishesElement.getAttribute('data-include');
-                }
-            }
-            
-            return includeUrl;
-            '''
-            
-            include_url = self.driver.execute_script(data_include_script)
+            # Direct extraction of data-include URL from static HTML - no interaction needed
+            try:
+                include_element = self.driver.find_element(
+                    By.CSS_SELECTOR, 
+                    '#finishes-tab-positioning-bottom[data-include]'
+                )
+                include_url = include_element.get_attribute('data-include')
+            except NoSuchElementException:
+                # Fallback: look for any element with data-include in finishes context
+                try:
+                    include_element = self.driver.find_element(
+                        By.CSS_SELECTOR, 
+                        '[data-include*="finishes"]'
+                    )
+                    include_url = include_element.get_attribute('data-include')
+                except NoSuchElementException:
+                    print("No data-include URL found for finishes content")
+                    return finishes_data
             
             if include_url:
                 # Convert relative URL to absolute URL
